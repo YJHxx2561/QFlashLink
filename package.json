@@ -1,0 +1,30 @@
+{
+  "name": "qflashlink",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "QQ 闪传分享链接转直链工具，支持本地部署、Cloudflare Workers 与 Cloudflare Pages",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build:embedded": "node scripts/build-embedded.mjs",
+    "build:pages": "node scripts/build-pages.mjs",
+    "build": "npm run build:embedded && npm run build:pages",
+    "dev": "npm run build:embedded && node src/server.js",
+    "start": "node src/server.js",
+    "dev:worker": "npm run build:embedded && wrangler dev --port 8787",
+    "dev:pages": "npm run build && wrangler pages dev dist",
+    "deploy:worker": "npm run build:embedded && wrangler deploy",
+    "deploy": "wrangler deploy",
+    "deploy:pages": "npm run build && wrangler pages deploy dist --project-name qflashlink",
+    "check": "node --check src/qfile.js && node --check src/handler.js && node --check src/worker.js && node --check src/server.js && node --check public/app.js",
+    "test": "npm run build:embedded && node --test test/*.test.js"
+  },
+  "dependencies": {
+    "esbuild": "^0.25.0"
+  },
+  "devDependencies": {
+    "wrangler": "^4.40.0"
+  }
+}

@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.wrangler/
+.workbuddy/
+*.log
+.DS_Store
+Thumbnail.db

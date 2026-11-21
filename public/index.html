@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="把 QQ 闪传分享链接转换为可直接下载的直链，支持本地部署与 Cloudflare Workers / Pages。" />
+    <title>QFlashLink · QQ 闪传直链转换器</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/style.css" />
+    <script>
+      // 在页面渲染前确定主题，避免浅色闪屏。
+      (function () {
+        try {
+          var pref = localStorage.getItem("qflashlink:theme") || "system";
+          var dark =
+            pref === "dark" ||
+            (pref === "system" &&
+              window.matchMedia("(prefers-color-scheme: dark)").matches);
+          document.documentElement.dataset.theme = dark ? "dark" : "light";
+        } catch (e) {
+          document.documentElement.dataset.theme = "light";
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div class="page">
+      <header class="hero">
+        <button id="theme-toggle" class="theme-toggle" type="button" title="切换显示模式" aria-label="切换显示模式">
+          <svg class="theme-icon icon-system" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="2" y="3" width="20" height="14" rx="2" />
+            <path d="M8 21h8M12 17v4" />
+          </svg>
+          <svg class="theme-icon icon-light" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="4" />
+            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
+          </svg>
+          <svg class="theme-icon icon-dark" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" />
+          </svg>
+        </button>
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z" />
+            </svg>
+          </span>
+          <span class="brand-name">QFlashLink</span>
+        </div>
+        <h1>QQ 闪传直链转换器</h1>
+        <p class="subtitle">粘贴分享链接，一键提取文件直链，复制到下载器或浏览器即可下载。</p>
+      </header>
+
+      <main>
+        <section class="card input-card" aria-labelledby="input-title">
+          <label id="input-title" class="field-label" for="share-url">分享链接</label>
+          <div class="input-row">
+            <input
+              id="share-url"
+              type="url"
+              inputmode="url"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="https://qfile.qq.com/q/..."
+            />
+            <button id="convert-btn" class="primary" type="button">解析直链</button>
+          </div>
+          <p class="hint">
+            仅支持 <code>https://qfile.qq.com/q/...</code> 形式的公开分享，无需登录。分享链接默认有效期 <strong>7 天</strong>（SVIP 最长 180 天）。按 Enter 也可以解析。
+          </p>
+          <p id="error" class="error" role="alert" hidden></p>
+        </section>
+
+        <section id="result-section" class="card result-card" aria-labelledby="result-title" hidden>
+          <div class="result-header">
+            <h2 id="result-title">
+              解析结果
+              <span id="file-count" class="badge">0 个文件</span>
+            </h2>
+            <button id="copy-all-btn" class="secondary" type="button">复制全部直链</button>
+          </div>
+          <div class="expiry-notice">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M12 7v5l3 2" />
+            </svg>
+            <span>
+              <strong>直链有效期：</strong>解析出的是上游临时签名地址，通常<strong>数小时内有效</strong>（具体时长由 QQ 服务器决定，未公开）；过期后请重新解析，或点击文件旁的「刷新」重新签发。分享链接本身默认 7 天有效。
+            </span>
+          </div>
+          <div id="file-list" class="file-list"></div>
+          <p class="note">
+            列表仅展示分享根目录前 20 个文件，不展开文件夹。需要提取码的分享暂不支持。
+          </p>
+        </section>
+      </main>
+
+      <footer class="site-footer">
+        <div class="footer-card">
+          <div class="footer-stack">
+            <!-- 本站运行时间（单独一行） -->
+            <div class="footer-badge">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 7v5l3 2" />
+              </svg>
+              <span>本站已运行</span>
+              <span id="site_uptime" class="stat-num">—</span>
+            </div>
+
+            <!-- 访问统计 -->
+            <div class="visit-stats">
+              <span class="footer-badge">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6Z" />
+                  <circle cx="12" cy="12" r="2.5" />
+                </svg>
+                本页访问人次<span id="page_pv" class="stat-num">—</span>
+              </span>
+              <span class="footer-badge">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="8" r="3.5" />
+                  <path d="M5 20a7 7 0 0 1 14 0" />
+                </svg>
+                本页访问人数<span id="page_uv" class="stat-num">—</span>
+              </span>
+            </div>
+
+            <!-- 站点名称（单独一行） -->
+            <div class="footer-line">QFlashLink - QQ 闪传直链转换器</div>
+
+            <!-- 版权信息（单独一行） -->
+            <div class="footer-line">
+              Copyright © 2026
+              <a href="https://yjhup.com" target="_blank" rel="noopener noreferrer">YJH</a>.
+              All rights reserved. | Powered by
+              <a href="https://yjhup.com" target="_blank" rel="noopener noreferrer">YJH</a>
+            </div>
+          </div>
+        </div>
+      </footer>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+    <script src="/app.js" defer></script>
+    <script defer src="//stats.web.yjhup.com/js/index.min.js"></script>
+  </body>
+</html>
